@@ -1,0 +1,217 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tp-microservices
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: tp-microservices
+data:
+  SERVICE_B_URL: "http://service-b:8080"
+  SERVICE_C_URL: "http://service-c:8080"
+  DATA_FILE: "/data/counter.txt"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+  namespace: tp-microservices
+type: Opaque
+data:
+  DB_PASSWORD: "cGFzc3dvcmQ="
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-c
+  namespace: tp-microservices
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-c
+  namespace: tp-microservices
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-c
+  template:
+    metadata:
+      labels:
+        app: service-c
+    spec:
+      containers:
+      - name: c
+        image: service-c:latest
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: app-config
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            cpu: 200m
+            memory: 200Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: pvc-c
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-c
+  namespace: tp-microservices
+spec:
+  selector:
+    app: service-c
+  ports:
+  - port: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-b
+  namespace: tp-microservices
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-b
+  template:
+    metadata:
+      labels:
+        app: service-b
+    spec:
+      containers:
+      - name: b
+        image: service-b:latest
+        ports:
+        - containerPort: 8080
+        envFrom:
+        - configMapRef:
+            name: app-config
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            cpu: 200m
+            memory: 200Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-b
+  namespace: tp-microservices
+spec:
+  selector:
+    app: service-b
+  ports:
+  - port: 8080
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-a
+  namespace: tp-microservices
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-a
+  template:
+    metadata:
+      labels:
+        app: service-a
+    spec:
+      containers:
+      - name: a
+        image: service-a:latest
+        ports:
+        - containerPort: 5000
+        envFrom:
+        - configMapRef:
+            name: app-config
+        resources:
+          requests:
+            cpu: 100m
+            memory: 100Mi
+          limits:
+            cpu: 200m
+            memory: 200Mi
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 5000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-a
+  namespace: tp-microservices
+spec:
+  selector:
+    app: service-a
+  ports:
+  - port: 5000
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-a
+  namespace: tp-microservices
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: service-a
+            port:
+              number: 5000
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: hpa-a
+  namespace: tp-microservices
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: service-a
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80

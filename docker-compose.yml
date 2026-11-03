@@ -1,0 +1,25 @@
+services :
+  service-c :
+    build: ./service-c
+    image : service-c:1.0
+    expose:
+      - "8080"
+
+  service-b:
+    build: ./service-b
+    image: service-b:1.0
+    expose:
+      - "8080"
+    depends_on:
+      - service-c
+
+
+  service-a:
+    build: ./service-a
+    image: service-a:1.0
+    expose:
+      - "8080"
+    depends_on:
+      - service-b
+
+
